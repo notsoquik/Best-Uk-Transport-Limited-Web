@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { FileText, BarChart3 } from "lucide-react"
+import { FileText, BarChart3, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export function Navigation() {
@@ -28,6 +28,16 @@ export function Navigation() {
             >
               <BarChart3 className="w-5 h-5 sm:w-4 sm:h-4 mr-2" />
               View Reports
+            </Button>
+          </Link>
+          <Link href="/batch-submission" className="flex-1">
+            <Button
+              variant={pathname === "/batch-submission" ? "default" : "outline"}
+              className="w-full h-12 sm:h-11 text-base sm:text-sm font-semibold"
+            >
+              <Package className="w-5 h-5 sm:w-4 sm:h-4 mr-2" />
+              <span className="hidden sm:inline">Batch Submit</span>
+              <span className="sm:hidden">Batch</span>
             </Button>
           </Link>
         </div>

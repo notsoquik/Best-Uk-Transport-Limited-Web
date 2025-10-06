@@ -2,17 +2,16 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Truck, Fuel, Droplet, FileText, Download, Camera, X } from "lucide-react"
-import SignatureCanvas from "react-signature-canvas"
+import { Truck, Fuel, Droplet, FileText, Download, Camera, X, Shield } from "lucide-react"
 import { generatePDF } from "@/lib/pdf-generator"
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
-import { saveFuelRecord } from "@/lib/storage"
+import { saveFuelRecord, backupData, validateDataIntegrity } from "@/lib/storage"
 
 interface FormData {
   date: string
@@ -32,10 +31,10 @@ interface FormData {
 
 export default function FuelTrackingPage() {
   const { toast } = useToast()
-  const signatureRef = useRef<SignatureCanvas>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [receiptPreview, setReceiptPreview] = useState<string>("")
+  const [dataIntegrityStatus, setDataIntegrityStatus] = useState<{ valid: boolean; errors: string[] } | null>(null)
 
   const [formData, setFormData] = useState<FormData>({
     date: new Date().toISOString().split("T")[0],
@@ -53,6 +52,25 @@ export default function FuelTrackingPage() {
     receiptImage: "",
   })
 
+  const handleDriverNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { value } = e.target
+    setFormData((prev) => ({
+      ...prev,
+      driverName: value,
+      signature: value,
+      signatureTimestamp: value
+        ? new Date().toLocaleString("en-GB", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          })
+        : "",
+    }))
+  }
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
@@ -61,7 +79,6 @@ export default function FuelTrackingPage() {
   const handleReceiptUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      // Validate file type
       if (!file.type.startsWith("image/")) {
         toast({
           title: "Invalid File",
@@ -71,7 +88,6 @@ export default function FuelTrackingPage() {
         return
       }
 
-      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         toast({
           title: "File Too Large",
@@ -99,10 +115,6 @@ export default function FuelTrackingPage() {
     }
   }
 
-  const clearSignature = () => {
-    signatureRef.current?.clear()
-  }
-
   const calculateTotals = () => {
     const dieselTotal = (Number.parseFloat(formData.dieselAdded) || 0) * (Number.parseFloat(formData.dieselPrice) || 0)
     const adblueTotal = (Number.parseFloat(formData.adblueAdded) || 0) * (Number.parseFloat(formData.adbluePrice) || 0)
@@ -117,23 +129,19 @@ export default function FuelTrackingPage() {
     }
   }
 
+  useEffect(() => {
+    const status = validateDataIntegrity()
+    setDataIntegrityStatus(status)
+    backupData()
+  }, [])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Validation
     if (!formData.driverName || !formData.truckRegistration) {
       toast({
         title: "Missing Information",
         description: "Please fill in driver name and truck registration.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!formData.receiptImage) {
-      toast({
-        title: "Receipt Required",
-        description: "Please upload a picture of the fuel receipt.",
         variant: "destructive",
       })
       return
@@ -152,33 +160,11 @@ export default function FuelTrackingPage() {
       return
     }
 
-    if (signatureRef.current?.isEmpty()) {
-      toast({
-        title: "Signature Required",
-        description: "Please provide your signature before submitting.",
-        variant: "destructive",
-      })
-      return
-    }
-
     setIsSubmitting(true)
 
     try {
-      // Capture signature
-      const signatureData = signatureRef.current?.toDataURL() || ""
-      const timestamp = new Date().toLocaleString("en-GB", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })
-
       const finalFormData = {
         ...formData,
-        signature: signatureData,
-        signatureTimestamp: timestamp,
       }
 
       const totalsObj = calculateTotals()
@@ -191,15 +177,13 @@ export default function FuelTrackingPage() {
         grandTotal: Number.parseFloat(totalsObj.grandTotal),
       })
 
-      // Generate PDF
       await generatePDF(finalFormData, totalsObj)
 
       toast({
         title: "Success!",
-        description: "PDF has been generated and downloaded successfully.",
+        description: "Record saved and PDF generated. Data automatically backed up.",
       })
 
-      // Reset form
       setFormData({
         date: new Date().toISOString().split("T")[0],
         driverName: "",
@@ -215,16 +199,18 @@ export default function FuelTrackingPage() {
         signatureTimestamp: "",
         receiptImage: "",
       })
-      signatureRef.current?.clear()
       setReceiptPreview("")
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
+
+      const status = validateDataIntegrity()
+      setDataIntegrityStatus(status)
     } catch (error) {
       console.error("[v0] Error generating PDF:", error)
       toast({
         title: "Error",
-        description: "Failed to generate PDF. Please try again.",
+        description: "Failed to save record. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -237,7 +223,6 @@ export default function FuelTrackingPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary via-accent to-secondary p-3 sm:p-6 md:p-8">
       <div className="max-w-4xl mx-auto pb-8">
-        {/* Header */}
         <div className="text-center mb-6 sm:mb-8">
           <div className="flex items-center justify-center gap-2 sm:gap-3 mb-3 sm:mb-4">
             <Truck className="w-8 h-8 sm:w-10 sm:h-10 text-brand" />
@@ -248,8 +233,31 @@ export default function FuelTrackingPage() {
           <p className="text-base sm:text-lg text-muted-foreground px-4">Fuel Intake & Spendings Report</p>
         </div>
 
+        {dataIntegrityStatus && (
+          <Card
+            className={`mb-4 border-2 ${dataIntegrityStatus.valid ? "border-green-500/50 bg-green-50/50" : "border-red-500/50 bg-red-50/50"}`}
+          >
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center gap-3">
+                <Shield className={`w-5 h-5 ${dataIntegrityStatus.valid ? "text-green-600" : "text-red-600"}`} />
+                <div className="flex-1">
+                  <p
+                    className={`text-sm font-semibold ${dataIntegrityStatus.valid ? "text-green-900" : "text-red-900"}`}
+                  >
+                    {dataIntegrityStatus.valid ? "Data Protected & Backed Up" : "Data Integrity Issues Detected"}
+                  </p>
+                  <p className={`text-xs ${dataIntegrityStatus.valid ? "text-green-700" : "text-red-700"}`}>
+                    {dataIntegrityStatus.valid
+                      ? "All records are secure and automatically backed up"
+                      : `${dataIntegrityStatus.errors.length} issue(s) found`}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <form onSubmit={handleSubmit}>
-          {/* Main Form Card */}
           <Card className="mb-4 sm:mb-6 shadow-lg sm:shadow-xl border-2">
             <CardHeader className="bg-gradient-to-r from-brand/10 to-accent/10 p-4 sm:p-6">
               <CardTitle className="flex items-center gap-2 text-xl sm:text-2xl">
@@ -261,7 +269,6 @@ export default function FuelTrackingPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-4 sm:pt-6 p-4 sm:p-6 space-y-5 sm:space-y-6">
-              {/* Date and Driver Info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="date" className="text-base sm:text-base font-semibold">
@@ -287,14 +294,16 @@ export default function FuelTrackingPage() {
                     type="text"
                     placeholder="Enter driver name"
                     value={formData.driverName}
-                    onChange={handleInputChange}
+                    onChange={handleDriverNameChange}
                     className="text-base h-12 sm:h-12"
                     required
                   />
+                  {formData.signatureTimestamp && (
+                    <p className="text-xs text-muted-foreground">Signed at: {formData.signatureTimestamp}</p>
+                  )}
                 </div>
               </div>
 
-              {/* Vehicle Info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="truckRegistration" className="text-base sm:text-base font-semibold">
@@ -330,11 +339,10 @@ export default function FuelTrackingPage() {
                 </div>
               </div>
 
-              {/* Receipt Upload Section */}
               <div className="border-t pt-5 sm:pt-6">
                 <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center gap-2 text-brand">
                   <Camera className="w-5 h-5" />
-                  Fuel Receipt <span className="text-destructive">*</span>
+                  Fuel Receipt <span className="text-muted-foreground text-sm font-normal">(optional)</span>
                 </h3>
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -350,10 +358,9 @@ export default function FuelTrackingPage() {
                       capture="environment"
                       onChange={handleReceiptUpload}
                       className="text-sm sm:text-base h-12 sm:h-12 cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-brand file:text-white hover:file:bg-brand/90"
-                      required
                     />
                     <p className="text-xs sm:text-sm text-muted-foreground">
-                      Take a clear photo of your fuel receipt (max 5MB)
+                      Take a clear photo of your fuel receipt (max 5MB, optional)
                     </p>
                   </div>
 
@@ -383,7 +390,6 @@ export default function FuelTrackingPage() {
                 </div>
               </div>
 
-              {/* Diesel Section */}
               <div className="border-t pt-5 sm:pt-6">
                 <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center gap-2 text-brand">
                   <Fuel className="w-5 h-5" />
@@ -433,7 +439,6 @@ export default function FuelTrackingPage() {
                 </div>
               </div>
 
-              {/* AdBlue Section */}
               <div className="border-t pt-5 sm:pt-6">
                 <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center gap-2 text-accent-foreground">
                   <Droplet className="w-5 h-5" />
@@ -483,7 +488,6 @@ export default function FuelTrackingPage() {
                 </div>
               </div>
 
-              {/* Other Expenses */}
               <div className="border-t pt-5 sm:pt-6">
                 <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">
                   Other Expenses <span className="text-muted-foreground text-sm font-normal">(optional)</span>
@@ -523,7 +527,6 @@ export default function FuelTrackingPage() {
                 </div>
               </div>
 
-              {/* Grand Total */}
               <div className="border-t pt-5 sm:pt-6">
                 <div className="bg-gradient-to-r from-brand/20 to-accent/20 p-4 sm:p-6 rounded-lg">
                   <div className="flex flex-col sm:flex-row justify-between items-center gap-2 sm:gap-0">
@@ -532,40 +535,9 @@ export default function FuelTrackingPage() {
                   </div>
                 </div>
               </div>
-
-              {/* Signature Section */}
-              <div className="border-t pt-5 sm:pt-6">
-                <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">
-                  Driver Signature <span className="text-destructive">*</span>
-                </h3>
-                <div className="space-y-4">
-                  <div className="border-2 border-dashed border-border rounded-lg bg-white overflow-hidden">
-                    <SignatureCanvas
-                      ref={signatureRef}
-                      canvasProps={{
-                        className: "w-full h-40 sm:h-48 touch-none",
-                        style: { touchAction: "none" },
-                      }}
-                      backgroundColor="rgb(255, 255, 255)"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={clearSignature}
-                    className="w-full sm:w-auto h-11 text-base bg-transparent"
-                  >
-                    Clear Signature
-                  </Button>
-                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                    By signing above, I confirm that all information provided is accurate and complete.
-                  </p>
-                </div>
-              </div>
             </CardContent>
           </Card>
 
-          {/* Action Buttons */}
           <div className="flex flex-col gap-3 sm:gap-4 px-1">
             <Button
               type="submit"
@@ -579,7 +551,8 @@ export default function FuelTrackingPage() {
           </div>
 
           <p className="text-center text-xs sm:text-sm text-muted-foreground mt-4 sm:mt-6 px-4 leading-relaxed">
-            The PDF will be automatically downloaded to your device. You can then share it via email or other means.
+            The PDF will be automatically downloaded to your device. All data is saved and backed up automatically for
+            monthly batch submission.
           </p>
         </form>
       </div>

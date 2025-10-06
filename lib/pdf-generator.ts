@@ -216,20 +216,17 @@ export async function generatePDF(formData: FormData, totals: Totals) {
   pdf.setTextColor(0, 0, 0)
 
   // Signature Section
-  if (formData.signature) {
+  if (formData.signature && formData.signatureTimestamp) {
     pdf.setFont("helvetica", "bold")
     pdf.setFontSize(12)
     pdf.text("Driver Signature", margin, yPosition)
-    yPosition += 8
+    yPosition += 10
 
-    // Add signature image
-    try {
-      pdf.addImage(formData.signature, "PNG", margin, yPosition, 80, 30)
-      yPosition += 35
-    } catch (error) {
-      console.error("[v0] Error adding signature to PDF:", error)
-      yPosition += 10
-    }
+    // Display signature as text
+    pdf.setFont("helvetica", "italic")
+    pdf.setFontSize(14)
+    pdf.text(formData.signature, margin, yPosition)
+    yPosition += 10
 
     pdf.setFont("helvetica", "normal")
     pdf.setFontSize(10)
