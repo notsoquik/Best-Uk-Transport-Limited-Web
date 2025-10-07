@@ -9,6 +9,7 @@ import { Calendar, FileText, TrendingUp, Truck } from "lucide-react"
 import { getAllFuelRecords, getFuelRecordsByDate, getFuelRecordsByMonth, type FuelRecord } from "@/lib/storage"
 import { DailyReport } from "@/components/daily-report"
 import { MonthlyReport } from "@/components/monthly-report"
+import { InstallPrompt } from "@/components/install-prompt"
 
 export default function ReportsPage() {
   const [reportType, setReportType] = useState<"daily" | "monthly">("daily")
@@ -40,6 +41,8 @@ export default function ReportsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary via-accent to-secondary p-3 sm:p-6 md:p-8 pb-24 sm:pb-8">
+      <InstallPrompt />
+
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-6 sm:mb-8">

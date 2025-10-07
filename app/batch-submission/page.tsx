@@ -19,6 +19,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import { generateMonthlyReportPDF } from "@/lib/report-pdf-generator"
+import { InstallPrompt } from "@/components/install-prompt"
 
 export default function BatchSubmissionPage() {
   const { toast } = useToast()
@@ -131,6 +132,8 @@ export default function BatchSubmissionPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary via-accent to-secondary p-3 sm:p-6 md:p-8 pb-24 sm:pb-8">
+      <InstallPrompt />
+
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-6 sm:mb-8">

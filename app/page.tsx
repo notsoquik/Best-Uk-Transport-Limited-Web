@@ -12,6 +12,7 @@ import { generatePDF } from "@/lib/pdf-generator"
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import { saveFuelRecord, backupData, validateDataIntegrity } from "@/lib/storage"
+import { InstallPrompt } from "@/components/install-prompt"
 
 interface FormData {
   date: string
@@ -222,6 +223,8 @@ export default function FuelTrackingPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary via-accent to-secondary p-3 sm:p-6 md:p-8">
+      <InstallPrompt />
+
       <div className="max-w-4xl mx-auto pb-8">
         <div className="text-center mb-6 sm:mb-8">
           <div className="flex items-center justify-center gap-2 sm:gap-3 mb-3 sm:mb-4">
